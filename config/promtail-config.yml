@@ -1,0 +1,42 @@
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+positions:
+  filename: /tmp/positions.yaml
+
+scrape_configs:
+  - job_name: system
+    static_configs:
+      - targets:
+        - localhost
+        labels:
+          job: varlogs
+          __path__: /var/log/*log
+
+  # - job_name: grafana
+  #   static_configs:
+  #   - targets:
+  #     - localhost
+  #   labels:
+  #     job: grafana
+  #     __path__: /var/log/grafana/*log
+
+  - job_name: local
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: local
+          __path__: /logs/processed_logs.log
+    pipeline_stages:
+      - json:
+          expressions:
+            labels_env: labels.env
+            labels_wf_app_id: labels.wf_app_id
+      - labels:
+          labels_env:
+          labels_wf_app_id:

@@ -1,0 +1,49 @@
+version: "3.8"
+
+services:
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    depends_on:
+      - loki
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./logs/grafana:/var/log/grafana
+
+  loki:
+    image: grafana/loki:latest
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki-config.yml:/etc/loki-config.yml
+    command: -config.file=/etc/loki-config.yml
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:3100/ready"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  promtail:
+    depends_on:
+      - loki
+    image: grafana/promtail:latest
+    volumes:
+      - ./config/promtail-config.yml:/etc/promtail-config.yml
+      - ./logs:/logs
+    command: -config.file=/etc/promtail-config.yml
+
+  # csv-processor:
+  #   build:
+  #     context: .
+  #     dockerfile: Dockerfile
+  #   volumes:
+  #     - ./Prod1.csv:/app/Prod1.csv
+  #     - ./logs:/logs
+  #     - .:/app
+
+volumes:
+  grafana-data:
