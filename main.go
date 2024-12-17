@@ -3,18 +3,20 @@ package main
 import (
 	"context"
 	"encoding/csv"
+	"encoding/json"
 	"fmt"
 	"log"
 	"log/slog"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 )
 
 func main() {
 	// csvFiles := []string{"./Prod3.csv", "./Prod1.csv", "./Prod2.csv"}
-	// csvFiles := []string{"./Prod2.csv"}
-	csvFiles := []string{"./Prod3.csv", "./Prod1.csv"}
+	csvFiles := []string{"./Prod2-dec2.csv"}
+	// csvFiles := []string{"./Prod7.csv"}
 
 	// Create a log file
 	logFile := "./logs/processed_logs.log"
@@ -48,11 +50,27 @@ func logCSVLogs(logger *slog.Logger, csvFile string) {
 		log.Fatalf("Error reading CSV headers: %v", err)
 	}
 
+	from := 0
+	// from := 100000
+	limit := 100000
+
+	counter := 0
 	for {
+
+		if counter == limit {
+			break
+		}
+
+		counter++
+
 		row, err := reader.Read()
 		if err != nil {
-			fmt.Println("Error reading CSV row:", err)
+			fmt.Println("Error reading CSV row:", err, row)
 			break
+		}
+
+		if from > 0 && counter < from {
+			continue
 		}
 
 		record := make(map[string]string)
@@ -60,6 +78,27 @@ func logCSVLogs(logger *slog.Logger, csvFile string) {
 			if i < len(row) {
 				record[header] = row[i]
 			}
+		}
+
+		// log := make(map[string]interface{})
+		if record["log"] != "" {
+			// err := json.Unmarshal([]byte(record["log"]), &log)
+			// if err != nil {
+			// 	fmt.Println("Error unmarshalling log field:", err)
+			// 	fmt.Println("Error unmarshalling log field:", record["log"])
+			// 	panic("Error unmarshalling log field")
+			// }
+
+			logmap, err := jsonToMap(record["log"])
+			if err != nil {
+				fmt.Println("Error converting log field to map:", err)
+				fmt.Println("Error converting log field to map:", record["log"])
+				panic("Error converting log field to map")
+			}
+			for key, value := range logmap {
+				record[key] = value
+			}
+			record["log"] = ""
 		}
 
 		timestamp := record["@timestamp"]
@@ -108,4 +147,48 @@ func logCSVLogs(logger *slog.Logger, csvFile string) {
 		}
 	}
 
+}
+
+func flattenJSON(data map[string]interface{}, prefix string, result map[string]string) {
+	for key, value := range data {
+		// Construct the full key with dot notation
+		fullKey := key
+		if prefix != "" {
+			fullKey = prefix + "." + key
+		}
+
+		// Handle the type of the value
+		switch v := value.(type) {
+		case string:
+			result[fullKey] = v
+		case float64:
+			result[fullKey] = strconv.FormatFloat(v, 'f', -1, 64)
+		case bool:
+			result[fullKey] = strconv.FormatBool(v)
+		case map[string]interface{}:
+			// Recursively flatten nested objects
+			flattenJSON(v, fullKey, result)
+		case []interface{}:
+			// Convert arrays to string representations
+			for i, elem := range v {
+				flattenJSON(map[string]interface{}{fmt.Sprintf("%s[%d]", fullKey, i): elem}, "", result)
+			}
+		default:
+			// Convert other types to strings
+			result[fullKey] = fmt.Sprintf("%v", v)
+		}
+	}
+}
+
+func jsonToMap(inputJSON string) (map[string]string, error) {
+	// Parse JSON into a generic map
+	var data map[string]interface{}
+	if err := json.Unmarshal([]byte(inputJSON), &data); err != nil {
+		return nil, err
+	}
+
+	// Create a result map to hold the flattened JSON
+	result := make(map[string]string)
+	flattenJSON(data, "", result)
+	return result, nil
 }
